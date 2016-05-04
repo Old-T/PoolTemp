@@ -1,126 +1,194 @@
-#include <Bridge.h>
-#include <Console.h>
-#include <FileIO.h>
-#include <HttpClient.h>
-#include <Mailbox.h>
-#include <Process.h>
-#include <YunClient.h>
-#include <YunServer.h>
+//
+// This sketch uses an ESP8266-based Adafruit Feather Huzzah for measuring
+// temperature and humidity with a DHT11 sensor
+// The values are sent as feeds to an Adafruit IO account via Adafruit MQTT publish calls
+//
+// To save power, deep sleep from the ESP8266 library is used
+// To wake up the board a signal on pin 16 is sent to the reset input
+// (so you need a wire between D16 and the reset pin)
+// Note! The connection D16 -> Reset has to be removed when uploading the sketch!
+// All activity happens in the setup() method as the board is reset after sleeping
+//
 
-// Depends on the RCSwitch library https://github.com/sui77/rc-switch
-// and the DHT sensor-, OneWire- and DallasTemperature libraries
+#include <ESP8266WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
 
-#include "RCSwitch.h"
-//#include <DHT.h>
+// Your personal WiFi- and Adafruit IO credentials
+// Should define WLAN_SSID, WLAN_PASS and AIO_KEY and AIO_USERNAME
+#include "WIFI_and_Adafruit_IO_parameters.h"
+
+//
+// Adafruit IO setup
+//
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883
+
+WiFiClient client;
+
+// Store the MQTT server, username, and password in flash memory.
+// This is required for using the Adafruit MQTT library.
+const char MQTT_SERVER[] PROGMEM    = AIO_SERVER;
+const char MQTT_USERNAME[] PROGMEM  = AIO_USERNAME;
+const char MQTT_PASSWORD[] PROGMEM  = AIO_KEY;
+
+Adafruit_MQTT_Client mqtt(&client, MQTT_SERVER, AIO_SERVERPORT, MQTT_USERNAME, MQTT_PASSWORD);
+
+const char POOL_TEMP_FEED[] PROGMEM = AIO_USERNAME "/feeds/Pooltemp";
+Adafruit_MQTT_Publish pooltempPub = Adafruit_MQTT_Publish(&mqtt, POOL_TEMP_FEED);
+
+const char POOLHOUSE_TEMP_FEED[] PROGMEM = AIO_USERNAME "/feeds/Pooltak";
+Adafruit_MQTT_Publish poolhousetempPub = Adafruit_MQTT_Publish(&mqtt, POOLHOUSE_TEMP_FEED);
+
+//
+// Sensor setup
+//
 #include <OneWire.h>
 #include <DallasTemperature.h>
-
-// Unique ID:s (4 bits, 0-15) for each measurement type so that the receiver
-// understands how to interpret the data on arrival
-#define LDR_MEASUREMENT_ID      1
-#define TEMP_MEASUREMENT_ID     2
-#define HUMIDITY_MEASUREMENT_ID 3
 #define OUTDOOR_MEASUREMENT     4
 #define POOLTEMP_MEASUREMENT    5
-
-// Setup for light sensor
 // Setup for DS18B20
-#define ONE_WIRE_BUS 3                // Uses digital pin 3
-#define ONE_WIRE_BUS2 4                // Uses digital pin 4
-
+#define ONE_WIRE_BUS 4                // Uses digital pin 3
+#define ONE_WIRE_BUS2 5                // Uses digital pin 4
+//#include <DHT.h>
+//#define DHTPIN 12       // Digital input pin for DHT11
+//#define DHTTYPE DHT11
+//DHT dht(DHTPIN, DHTTYPE);
 OneWire ourWire(ONE_WIRE_BUS);
 OneWire ourWire2(ONE_WIRE_BUS2);
-DallasTemperature Outdoor(&ourWire);
+DallasTemperature PoolHouseTemp(&ourWire);
 DallasTemperature PoolTemp(&ourWire2);
 
+#define SLEEP_SECONDS 600
 
-// Setup for radio transmitter
-#define TX_PIN 10                     // PWM output pin to use for transmission
-#define DELAY_BETWEEN_TRANSMITS 600000 // in milliseconds
-RCSwitch transmitter = RCSwitch();
+void MQTT_connect()
+{
+  if (mqtt.connected())
+  {
+    return;
+  }
+
+  Serial.print("Connecting to MQTT... ");
+
+  int8_t ret;
+  while ((ret = mqtt.connect()) != 0)
+  {
+    // connect will return 0 for connected
+    Serial.println(mqtt.connectErrorString(ret));
+    Serial.println("Retrying MQTT connection in 5 seconds...");
+    mqtt.disconnect();
+    delay(5000);
+  }
+  Serial.println("MQTT Connected!");
+}
+
+void sendDataToAdafruitIO(float pooltemp, float poolhousetemp)
+{
+  unsigned long startTime = millis();
+
+  Serial.println("Start sending data to Adafruit IO...");
+
+  MQTT_connect();
+
+  if (pooltempPub.publish(pooltemp))
+  {
+    Serial.println(pooltemp);
+    Serial.println("Sent temperature ok");
+  }
+  else
+  {
+    Serial.println("Failed sending pooltemp");
+  }
+
+  if (poolhousetempPub.publish(poolhousetemp))
+  {
+    Serial.println(poolhousetemp);
+    Serial.println("Sent poolhouse temp ok");
+  }
+  else
+  {
+    Serial.println("Failed sending poolhousetemp");
+  }
+
+  unsigned long endTime = millis();
+
+  Serial.print("Sending data took ");
+  Serial.print((endTime - startTime) / 1000.0);
+  Serial.println(" second(s)");
+}
+
+void setupWiFi()
+{
+  unsigned long startTime = millis();
+
+  // Setup serial port access.
+  Serial.begin(115200);
+
+  // Connect to WiFi access point.
+  Serial.print("Connecting to ");
+  Serial.println(WLAN_SSID);
+
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  unsigned long endTime = millis();
+
+  Serial.print("Setting up WiFi took ");
+  Serial.print((endTime - startTime) / 1000.0);
+  Serial.println(" second(s)");
+
+}
 
 void setup()
 {
-  Serial.begin(9600);
+  setupWiFi();
 
-  transmitter.enableTransmit(TX_PIN);
-  transmitter.setRepeatTransmit(25);
-}
+  //  dht.begin();
 
-unsigned long Code32BitsToSend(int measurementTypeID, unsigned long seq, unsigned long data)
-{
-  unsigned long checkSum = measurementTypeID + seq + data;
-  unsigned long byte3 = ((0x0F & measurementTypeID) << 4) + (0x0F & seq);
-  unsigned long byte2_and_byte_1 = 0xFFFF & data;
-  unsigned long byte0 = 0xFF & checkSum;
-  unsigned long dataToSend = (byte3 << 24) + (byte2_and_byte_1 << 8) + byte0;
-
-  return dataToSend;
-}
-
-// Encode a float as two bytes by multiplying with 100
-// and reserving the highest bit as a sign flag
-// Values that can be encoded correctly are between -327,67 and +327,67
-unsigned int EncodeFloatToTwoBytes(float floatValue)
-{
-  bool sign = false;
-
-  if (floatValue < 0)
-    sign = true;
-
-  int integer = (100 * fabs(floatValue));
-  unsigned int word = integer & 0XFFFF;
-
-  if (sign)
-    word |= 1 << 15;
-
-  return word;
-}
-
-void TransmitWithRepeat(unsigned long dataToSend)
-{
-  transmitter.send(dataToSend, 32);
-  delay(2000);
-  transmitter.send(dataToSend, 32);
-  delay(2000);
-}
-
-// A rolling sequence number for each measurement
-// Restarts at 0 after seqNum=15 has been used
-unsigned long seqNum = 0;
-unsigned long previousTime = 0;
-void loop()
-{
-  unsigned long currentTime = millis();
-  if (currentTime - previousTime <= DELAY_BETWEEN_TRANSMITS)
+  PoolHouseTemp.requestTemperatures();
+  float poolHouseTemp = PoolHouseTemp.getTempCByIndex(0);
+  if (poolHouseTemp < 0)
   {
-    delay(60000);
-    return;
+      PoolHouseTemp.requestTemperatures();
+      poolHouseTemp = PoolHouseTemp.getTempCByIndex(0);
   }
-  previousTime = currentTime;
-
-  //
-  // DS18B20 sensor, outdoor temperature
-  //
-  Outdoor.requestTemperatures();
-  float outdoorTemp = Outdoor.getTempCByIndex(0);
-  unsigned int encodedFloat = EncodeFloatToTwoBytes(outdoorTemp);
-  unsigned long dataToSend = Code32BitsToSend(OUTDOOR_MEASUREMENT, seqNum, encodedFloat);
-  TransmitWithRepeat(dataToSend);
-  Serial.print("Device 1 (index 0) = ");
-Serial.println(outdoorTemp);
+  
+  Serial.print("PoolHouseTemp ");
+  Serial.print(poolHouseTemp);
+  Serial.println(" grader");
 
   PoolTemp.requestTemperatures();
   float poolTemp = PoolTemp.getTempCByIndex(0);
-  encodedFloat = EncodeFloatToTwoBytes(poolTemp);
-  dataToSend = Code32BitsToSend(POOLTEMP_MEASUREMENT, seqNum, encodedFloat);
-  TransmitWithRepeat(dataToSend);
-  Serial.print("Device 2 (index 0) = ");
-Serial.println(PoolTemp.getTempCByIndex(0));
-
-  seqNum++;
-  if (seqNum > 15)
+  if (poolTemp < 0)
   {
-    seqNum = 0;
+      PoolTemp.requestTemperatures();
+      poolTemp = PoolHouseTemp.getTempCByIndex(0);
   }
+  Serial.print("PoolTemp ");
+  Serial.print(poolTemp);
+  Serial.println(" grader");
+
+  sendDataToAdafruitIO(poolTemp, poolHouseTemp);
+
+  // Put the board to deep sleep to save power. Will send a signal on D16 when it is time to wake up.
+  // Thus, connect D16 to the reset pin. After reset, setup will be executed again.
+  Serial.print("Going to deep sleep for ");
+  Serial.print(SLEEP_SECONDS);
+  Serial.println(" seconds");
+  ESP.deepSleep(SLEEP_SECONDS * 1000000);
 }
+
+void loop()
+{
+  // nothing to do here as setup is called when waking up after deep sleep
+}
+
