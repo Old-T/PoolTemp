@@ -90,7 +90,7 @@ void sendDataToAdafruitIO(float outtemp)
   }
   else
   {
-    Serial.println("Failed sending pooltemp");
+    Serial.println("Failed sending outtemp");
   }
 
   unsigned long endTime = millis();
@@ -135,14 +135,20 @@ void setup()
 {
   setupWiFi();
 
-  OutTemp.requestTemperatures();
+
+}
+
+void loop()
+{
+  // nothing to do here as setup is called when waking up after deep sleep
+    OutTemp.requestTemperatures();
   float outTemp = OutTemp.getTempCByIndex(0);
   if (outTemp == -127)
   {
       OutTemp.requestTemperatures();
       outTemp = OutTemp.getTempCByIndex(0);
   }
-  Serial.print("PoolTemp ");
+  Serial.print("OutTemp ");
   Serial.print(outTemp);
   Serial.println(" grader");
 
@@ -153,12 +159,7 @@ void setup()
   Serial.print("Going to deep sleep for ");
   Serial.print(SLEEP_SECONDS);
   Serial.println(" seconds");
-  delay(SLEEP_SECONDS * 1000000);
-  // ESP.deepSleep(SLEEP_SECONDS * 1000000);
-}
-
-void loop()
-{
-  // nothing to do here as setup is called when waking up after deep sleep
+  delay(600000); // SLEEP_SECONDS * 1000
+  //ESP.deepSleep(SLEEP_SECONDS * 1000000);
 }
 
