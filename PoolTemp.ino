@@ -86,35 +86,35 @@ void sendDataToAdafruitIO(float pooltemp, float poolhousetemp)
 {
   unsigned long startTime = millis();
 
-  Serial.println("Start sending data to Adafruit IO...");
+  //Serial.println("Start sending data to Adafruit IO...");
 
   MQTT_connect();
 
   if (pooltempPub.publish(pooltemp))
   {
-    Serial.println(pooltemp);
-    Serial.println("Sent temperature ok");
+    //Serial.println(pooltemp);
+    //Serial.println("Sent temperature ok");
   }
   else
   {
-    Serial.println("Failed sending pooltemp");
+    //Serial.println("Failed sending pooltemp");
   }
 
   if (poolhousetempPub.publish(poolhousetemp))
   {
-    Serial.println(poolhousetemp);
-    Serial.println("Sent poolhouse temp ok");
+    //Serial.println(poolhousetemp);
+    //Serial.println("Sent poolhouse temp ok");
   }
   else
   {
-    Serial.println("Failed sending poolhousetemp");
+    //Serial.println("Failed sending poolhousetemp");
   }
 
   unsigned long endTime = millis();
 
-  Serial.print("Sending data took ");
-  Serial.print((endTime - startTime) / 1000.0);
-  Serial.println(" second(s)");
+  //Serial.print("Sending data took ");
+  //Serial.print((endTime - startTime) / 1000.0);
+  //Serial.println(" second(s)");
 }
 
 void setupWiFi()
@@ -125,8 +125,8 @@ void setupWiFi()
   Serial.begin(115200);
 
   // Connect to WiFi access point.
-  Serial.print("Connecting to ");
-  Serial.println(WLAN_SSID);
+  //Serial.print("Connecting to ");
+  //Serial.println(WLAN_SSID);
 
   WiFi.begin(WLAN_SSID, WLAN_PASS);
   while (WiFi.status() != WL_CONNECTED)
@@ -134,17 +134,17 @@ void setupWiFi()
     delay(500);
     Serial.print(".");
   }
-  Serial.println();
+  //Serial.println();
 
-  Serial.println("WiFi connected");
+  //Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 
   unsigned long endTime = millis();
 
-  Serial.print("Setting up WiFi took ");
-  Serial.print((endTime - startTime) / 1000.0);
-  Serial.println(" second(s)");
+  //Serial.print("Setting up WiFi took ");
+  //Serial.print((endTime - startTime) / 1000.0);
+  //Serial.println(" second(s)");
 
 }
 
@@ -162,9 +162,9 @@ void setup()
       poolHouseTemp = PoolHouseTemp.getTempCByIndex(0);
   }
   
-  Serial.print("PoolHouseTemp ");
-  Serial.print(poolHouseTemp);
-  Serial.println(" grader");
+  //Serial.print("PoolHouseTemp ");
+  //Serial.print(poolHouseTemp);
+  //Serial.println(" grader");
 
   PoolTemp.requestTemperatures();
   float poolTemp = PoolTemp.getTempCByIndex(0);
@@ -173,17 +173,18 @@ void setup()
       PoolTemp.requestTemperatures();
       poolTemp = PoolHouseTemp.getTempCByIndex(0);
   }
-  Serial.print("PoolTemp ");
-  Serial.print(poolTemp);
-  Serial.println(" grader");
+  //Serial.print("PoolTemp ");
+  //Serial.print(poolTemp);
+  //Serial.println(" grader");
 
-  sendDataToAdafruitIO(poolTemp, poolHouseTemp);
+  if( (poolHouseTemp < 70) && (poolTemp<70))
+    sendDataToAdafruitIO(poolTemp, poolHouseTemp);
 
   // Put the board to deep sleep to save power. Will send a signal on D16 when it is time to wake up.
   // Thus, connect D16 to the reset pin. After reset, setup will be executed again.
-  Serial.print("Going to deep sleep for ");
-  Serial.print(SLEEP_SECONDS);
-  Serial.println(" seconds");
+  //Serial.print("Going to deep sleep for ");
+  //Serial.print(SLEEP_SECONDS);
+  //Serial.println(" seconds");
   ESP.deepSleep(SLEEP_SECONDS * 1000000);
 }
 
